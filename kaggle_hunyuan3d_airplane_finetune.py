@@ -57,6 +57,7 @@ TRAIN_AMP_TYPE = os.environ.get("HY3D_TRAIN_AMP_TYPE", "16")
 TRAIN_DEEPSPEED = os.environ.get("HY3D_TRAIN_DEEPSPEED", "0") == "1"
 ENABLE_MESH_LOGS = os.environ.get("HY3D_TRAIN_ENABLE_MESH_LOGS", "0") == "1"
 CUDA_VISIBLE_DEVICES = os.environ.get("HY3D_TRAIN_CUDA_VISIBLE_DEVICES", "0")
+INSTALL_TRAIN_DEPS = os.environ.get("HY3D_TRAIN_INSTALL_DEPS", "1") == "1"
 
 
 def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
@@ -69,6 +70,37 @@ def ensure_repo_exists() -> None:
         print(f"Using existing Hunyuan3D repo: {REPO_DIR}", flush=True)
         return
     run(["git", "clone", "https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1.git", str(REPO_DIR)])
+
+
+def torch_wheel_tag() -> str:
+    import torch
+
+    torch_version = torch.__version__.split("+", 1)[0]
+    cuda_version = torch.version.cuda
+    if cuda_version:
+        cuda_tag = "cu" + cuda_version.replace(".", "")
+    else:
+        cuda_tag = "cpu"
+    return f"torch-{torch_version}+{cuda_tag}"
+
+
+def ensure_training_dependencies() -> None:
+    if not INSTALL_TRAIN_DEPS:
+        print("Skipping training dependency installation because HY3D_TRAIN_INSTALL_DEPS=0.", flush=True)
+        return
+
+    try:
+        import torch_cluster  # noqa: F401
+
+        print("torch_cluster is already installed.", flush=True)
+        return
+    except ModuleNotFoundError:
+        pass
+
+    wheel_tag = torch_wheel_tag()
+    wheel_index = f"https://data.pyg.org/whl/{wheel_tag}.html"
+    print(f"Installing torch_cluster from PyG wheels: {wheel_index}", flush=True)
+    run([sys.executable, "-m", "pip", "install", "torch-cluster", "-f", wheel_index])
 
 
 def find_base_config() -> Path:
@@ -180,6 +212,7 @@ def print_environment() -> None:
     print(f"AMP type: {TRAIN_AMP_TYPE}", flush=True)
     print(f"DeepSpeed: {TRAIN_DEEPSPEED}", flush=True)
     print(f"Mesh logs: {ENABLE_MESH_LOGS}", flush=True)
+    print(f"Install training deps: {INSTALL_TRAIN_DEPS}", flush=True)
     try:
         run(["nvidia-smi"])
     except Exception as exc:
@@ -189,6 +222,7 @@ def print_environment() -> None:
 def main() -> None:
     print_environment()
     ensure_repo_exists()
+    ensure_training_dependencies()
     validate_dataset(TRAIN_DATA_LIST, "Train")
     validate_dataset(VAL_DATA_LIST, "Validation")
     base_config = find_base_config()
