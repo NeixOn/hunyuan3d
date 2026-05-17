@@ -35,6 +35,7 @@ PROJECT_DIR = Path(__file__).resolve().parent
 WORKDIR = Path(os.environ.get("WORKDIR", PROJECT_DIR)).resolve()
 REPO_DIR = WORKDIR / "Hunyuan3D-2.1"
 OUTPUT_DIR = WORKDIR / "hy3d_airplane_outputs"
+PATCHED_REQUIREMENTS = WORKDIR / "hy3d_requirements_kaggle.txt"
 LOCAL_IMAGE_DIR = Path(os.environ.get("LOCAL_IMAGE_DIR", PROJECT_DIR / "image")).resolve()
 
 MODEL_ID = os.environ.get("HY3D_MODEL_ID", "tencent/Hunyuan3D-2.1")
@@ -51,6 +52,27 @@ DEFAULT_RENDERING_ROOT = Path(
 def run(cmd: list[str], cwd: Path | None = None) -> None:
     print("+", " ".join(cmd), flush=True)
     subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=True)
+
+
+def build_kaggle_requirements() -> Path:
+    source = REPO_DIR / "requirements.txt"
+    if os.environ.get("HY3D_REQUIREMENTS_FILE"):
+        return Path(os.environ["HY3D_REQUIREMENTS_FILE"]).resolve()
+
+    lines = source.read_text(encoding="utf-8").splitlines()
+    patched = []
+    for line in lines:
+        stripped = line.strip()
+        if sys.version_info >= (3, 12) and stripped == "numpy==1.24.4":
+            patched.append("numpy==1.26.4")
+            continue
+        patched.append(line)
+
+    PATCHED_REQUIREMENTS.write_text("\n".join(patched) + "\n", encoding="utf-8")
+    print(f"Using Kaggle requirements file: {PATCHED_REQUIREMENTS}", flush=True)
+    if sys.version_info >= (3, 12):
+        print("Patched numpy==1.24.4 to numpy==1.26.4 for Python 3.12.", flush=True)
+    return PATCHED_REQUIREMENTS
 
 
 def install_repo() -> None:
@@ -76,7 +98,8 @@ def install_repo() -> None:
             ]
         )
 
-    run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], cwd=REPO_DIR)
+    requirements_file = build_kaggle_requirements()
+    run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)], cwd=REPO_DIR)
 
 
 def find_first_existing_file(candidates: list[Path]) -> Path | None:
