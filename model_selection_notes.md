@@ -55,10 +55,21 @@ Kaggle:
 ```
 
 On Kaggle Python 3.12, the script writes `hy3d_requirements_kaggle.txt` and
-patches Hunyuan3D's `numpy==1.24.4` pin to `numpy==1.26.4`, because NumPy
-1.24.4 has no normal wheel for Python 3.12. If installation failed before this
-patch, just pull/update this repo and run the script again; the already cloned
-`Hunyuan3D-2.1` directory can stay in place.
+patches old Hunyuan3D pins that do not have Python 3.12 wheels:
+
+```text
+numpy==1.24.4 -> numpy==1.26.4
+pymeshlab==2022.2.post3 -> pymeshlab==2023.12.post3
+```
+
+If installation failed before this patch, just pull/update this repo and run the
+script again; the already cloned `Hunyuan3D-2.1` directory can stay in place.
+After dependencies are installed once, you can skip that step with:
+
+```bash
+%env HY3D_SKIP_DEP_INSTALL=1
+!python kaggle_hunyuan3d_airplane_smoke_test.py
+```
 
 The current script expects the reconstruction input image first at:
 

@@ -59,19 +59,26 @@ def build_kaggle_requirements() -> Path:
     if os.environ.get("HY3D_REQUIREMENTS_FILE"):
         return Path(os.environ["HY3D_REQUIREMENTS_FILE"]).resolve()
 
+    py312_replacements = {
+        "numpy==1.24.4": "numpy==1.26.4",
+        "pymeshlab==2022.2.post3": "pymeshlab==2023.12.post3",
+    }
     lines = source.read_text(encoding="utf-8").splitlines()
     patched = []
+    replacements_used = []
     for line in lines:
         stripped = line.strip()
-        if sys.version_info >= (3, 12) and stripped == "numpy==1.24.4":
-            patched.append("numpy==1.26.4")
+        replacement = py312_replacements.get(stripped)
+        if sys.version_info >= (3, 12) and replacement:
+            patched.append(replacement)
+            replacements_used.append((stripped, replacement))
             continue
         patched.append(line)
 
     PATCHED_REQUIREMENTS.write_text("\n".join(patched) + "\n", encoding="utf-8")
     print(f"Using Kaggle requirements file: {PATCHED_REQUIREMENTS}", flush=True)
-    if sys.version_info >= (3, 12):
-        print("Patched numpy==1.24.4 to numpy==1.26.4 for Python 3.12.", flush=True)
+    for old, new in replacements_used:
+        print(f"Patched {old} to {new} for Python 3.12.", flush=True)
     return PATCHED_REQUIREMENTS
 
 
@@ -97,6 +104,10 @@ def install_repo() -> None:
                 "https://download.pytorch.org/whl/cu124",
             ]
         )
+
+    if os.environ.get("HY3D_SKIP_DEP_INSTALL", "0") == "1":
+        print("Skipping dependency installation because HY3D_SKIP_DEP_INSTALL=1.", flush=True)
+        return
 
     requirements_file = build_kaggle_requirements()
     run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)], cwd=REPO_DIR)
