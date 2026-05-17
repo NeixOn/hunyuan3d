@@ -16,6 +16,7 @@ Optional env overrides:
     HY3D_CPU_OCTREE_RESOLUTION=128
     HY3D_SKIP_DEP_INSTALL=1
     HY3D_INSTALL_PROFILE=shape|full
+    HY3D_CPU_DISABLE_PIP_MIRRORS=1
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ OCTREE_RESOLUTION = int(
     os.environ.get("HY3D_CPU_OCTREE_RESOLUTION", os.environ.get("HY3D_OCTREE_RESOLUTION", "128"))
 )
 INSTALL_PROFILE = os.environ.get("HY3D_INSTALL_PROFILE", "shape").lower()
+DISABLE_PIP_MIRRORS = os.environ.get("HY3D_CPU_DISABLE_PIP_MIRRORS", "1") == "1"
 USE_SAFETENSORS_ENV = os.environ.get("HY3D_USE_SAFETENSORS", "0").strip().lower()
 USE_SAFETENSORS = USE_SAFETENSORS_ENV in {"1", "true", "yes", "on"}
 
@@ -95,6 +97,10 @@ def build_kaggle_requirements() -> Path:
     skipped_for_shape = []
     for line in lines:
         stripped = line.strip()
+        if DISABLE_PIP_MIRRORS and stripped.startswith(("-i ", "--index-url", "--extra-index-url")):
+            patched.append(f"# skipped unstable package index for CPU smoke test: {line}")
+            continue
+
         if INSTALL_PROFILE == "shape" and stripped and not stripped.startswith(("#", "--")):
             name = requirement_name(stripped)
             if name in shape_excluded_packages:
@@ -112,6 +118,7 @@ def build_kaggle_requirements() -> Path:
     PATCHED_REQUIREMENTS.write_text("\n".join(patched) + "\n", encoding="utf-8")
     print(f"Using Kaggle CPU requirements file: {PATCHED_REQUIREMENTS}", flush=True)
     print(f"Dependency install profile: {INSTALL_PROFILE}", flush=True)
+    print(f"Disable pip mirrors: {DISABLE_PIP_MIRRORS}", flush=True)
     for old, new in replacements_used:
         print(f"Patched {old} to {new} for Python 3.12.", flush=True)
     if skipped_for_shape:
@@ -131,7 +138,21 @@ def install_repo() -> None:
         return
 
     requirements_file = build_kaggle_requirements()
-    run([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)], cwd=REPO_DIR)
+    run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--retries",
+            "5",
+            "--default-timeout",
+            "120",
+            "-r",
+            str(requirements_file),
+        ],
+        cwd=REPO_DIR,
+    )
 
 
 def find_first_existing_file(candidates: list[Path]) -> Path | None:
