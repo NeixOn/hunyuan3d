@@ -50,13 +50,28 @@ Use `kaggle_hunyuan3d_airplane_smoke_test.py` on Kaggle:
 
 ```bash
 !cp /path/to/kaggle_hunyuan3d_airplane_smoke_test.py /kaggle/working/
+!cp -r /path/to/image /kaggle/working/
 !python /kaggle/working/kaggle_hunyuan3d_airplane_smoke_test.py
 ```
 
-If the dataset path is not auto-detected:
+The current script expects the reconstruction input image first at:
+
+```text
+/kaggle/working/image/airplan.png
+```
+
+It also knows the current Kaggle dataset layout:
+
+```text
+/kaggle/input/datasets/neixon/airplanedataset/02691156/<instance>/models/model_normalized.obj
+/kaggle/input/datasets/ronak555/shapenetcorerendering-part1/kaggle/tmp/ShapeNetRendering/02691156/<instance>/rendering/00.png
+```
+
+If you want to force one specific image or ShapeNet instance:
 
 ```bash
-%env SHAPENET_RENDERING_ROOT=/kaggle/input/<your-shapenet-rendering-folder>
+%env INPUT_IMAGE=/kaggle/working/image/airplan.png
+%env SHAPENET_INSTANCE_ID=10155655850468db78d106ce0a280f87
 !python /kaggle/working/kaggle_hunyuan3d_airplane_smoke_test.py
 ```
 
