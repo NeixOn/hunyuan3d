@@ -46,18 +46,18 @@ Verdict: keep as baselines.
 
 ## Recommended First Experiment
 
-Use `kaggle_hunyuan3d_airplane_smoke_test.py` on Kaggle:
+Use `kaggle_hunyuan3d_airplane_smoke_test.py` from the cloned project folder on
+Kaggle:
 
 ```bash
-!cp /path/to/kaggle_hunyuan3d_airplane_smoke_test.py /kaggle/working/
-!cp -r /path/to/image /kaggle/working/
-!python /kaggle/working/kaggle_hunyuan3d_airplane_smoke_test.py
+%cd /path/to/cloned/project
+!python kaggle_hunyuan3d_airplane_smoke_test.py
 ```
 
 The current script expects the reconstruction input image first at:
 
 ```text
-/kaggle/working/image/airplan.png
+./image/airplan.png
 ```
 
 It also knows the current Kaggle dataset layout:
@@ -67,12 +67,11 @@ It also knows the current Kaggle dataset layout:
 /kaggle/input/datasets/ronak555/shapenetcorerendering-part1/kaggle/tmp/ShapeNetRendering/02691156/<instance>/rendering/00.png
 ```
 
-If you want to force one specific image or ShapeNet instance:
+If you want to force one specific image:
 
 ```bash
-%env INPUT_IMAGE=/kaggle/working/image/airplan.png
-%env SHAPENET_INSTANCE_ID=10155655850468db78d106ce0a280f87
-!python /kaggle/working/kaggle_hunyuan3d_airplane_smoke_test.py
+%env INPUT_IMAGE=/path/to/image.png
+!python kaggle_hunyuan3d_airplane_smoke_test.py
 ```
 
 Lower memory settings:
@@ -80,7 +79,7 @@ Lower memory settings:
 ```bash
 %env HY3D_STEPS=20
 %env HY3D_OCTREE_RESOLUTION=128
-!python /kaggle/working/kaggle_hunyuan3d_airplane_smoke_test.py
+!python kaggle_hunyuan3d_airplane_smoke_test.py
 ```
 
 ## Improvement Path

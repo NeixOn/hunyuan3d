@@ -5,12 +5,12 @@ Target environment: Kaggle GPU T4 x2. This script intentionally tests shape
 generation first, without the Hunyuan3D-Paint texturing stage, because geometry
 is the part we need to validate before spending VRAM on textures.
 
-Run in a Kaggle notebook cell:
-    !python /kaggle/working/kaggle_hunyuan3d_airplane_smoke_test.py
+Run from the cloned project directory:
+    python kaggle_hunyuan3d_airplane_smoke_test.py
 
 Default Kaggle paths used by this script:
     reconstruction image:
-        /kaggle/working/image/airplan.png
+        ./image/airplan.png
     ShapeNetCore airplane meshes:
         /kaggle/input/datasets/neixon/airplanedataset/02691156/<instance>/models/model_normalized.obj
     ShapeNetRendering airplane views:
@@ -20,7 +20,6 @@ Optional env overrides:
     INPUT_IMAGE=/path/to/image.png
     SHAPENET_CORE_ROOT=/path/to/ShapeNetCore/02691156-or-parent
     SHAPENET_RENDERING_ROOT=/path/to/ShapeNetRendering/02691156-or-parent
-    SHAPENET_INSTANCE_ID=10155655850468db78d106ce0a280f87
 """
 
 from __future__ import annotations
@@ -32,16 +31,16 @@ from pathlib import Path
 
 
 AIRPLANE_SYNSET = "02691156"
-WORKDIR = Path(os.environ.get("WORKDIR", "/kaggle/working")).resolve()
+PROJECT_DIR = Path(__file__).resolve().parent
+WORKDIR = Path(os.environ.get("WORKDIR", PROJECT_DIR)).resolve()
 REPO_DIR = WORKDIR / "Hunyuan3D-2.1"
 OUTPUT_DIR = WORKDIR / "hy3d_airplane_outputs"
-LOCAL_IMAGE_DIR = WORKDIR / "image"
+LOCAL_IMAGE_DIR = Path(os.environ.get("LOCAL_IMAGE_DIR", PROJECT_DIR / "image")).resolve()
 
 MODEL_ID = os.environ.get("HY3D_MODEL_ID", "tencent/Hunyuan3D-2.1")
 SUBFOLDER = os.environ.get("HY3D_SUBFOLDER", "hunyuan3d-dit-v2-1")
 STEPS = int(os.environ.get("HY3D_STEPS", "30"))
 OCTREE_RESOLUTION = int(os.environ.get("HY3D_OCTREE_RESOLUTION", "256"))
-INSTANCE_ID = os.environ.get("SHAPENET_INSTANCE_ID")
 
 DEFAULT_CORE_ROOT = Path("/kaggle/input/datasets/neixon/airplanedataset")
 DEFAULT_RENDERING_ROOT = Path(
@@ -117,7 +116,7 @@ def find_reconstruction_image() -> Path:
             return matches[0]
 
     print(
-        "No local image found in /kaggle/working/image; falling back to ShapeNetRendering.",
+        f"No local image found in {LOCAL_IMAGE_DIR}; falling back to ShapeNetRendering.",
         flush=True,
     )
     return find_airplane_render()
@@ -138,16 +137,9 @@ def find_ground_truth_mesh() -> Path | None:
         if not synset_root.exists():
             continue
 
-        if INSTANCE_ID:
-            candidate = synset_root / INSTANCE_ID / "models" / "model_normalized.obj"
-            if candidate.exists():
-                print(f"Found ground-truth mesh: {candidate}", flush=True)
-                return candidate
-            continue
-
         matches = sorted(synset_root.glob("*/models/model_normalized.obj"))
         if matches:
-            print(f"Found ground-truth mesh: {matches[0]}", flush=True)
+            print(f"Found example ground-truth mesh: {matches[0]}", flush=True)
             return matches[0]
 
     print("Ground-truth mesh not found; continuing with reconstruction only.", flush=True)
@@ -173,16 +165,6 @@ def find_airplane_render() -> Path:
             continue
         synset_root = normalize_synset_root(root)
 
-        if INSTANCE_ID:
-            candidates = [
-                synset_root / INSTANCE_ID / "rendering" / "00.png",
-                synset_root / INSTANCE_ID / "rendering" / "00.jpg",
-            ]
-            image = find_first_existing_file(candidates)
-            if image:
-                print(f"Using ShapeNet render: {image}", flush=True)
-                return image
-
         patterns = [
             "*/rendering/00.png",
             "*/rendering/*.png",
@@ -196,7 +178,7 @@ def find_airplane_render() -> Path:
                 return matches[0]
 
     raise FileNotFoundError(
-        "Could not find an input image. Put it under /kaggle/working/image, "
+        f"Could not find an input image. Put it under {LOCAL_IMAGE_DIR}, "
         "or set INPUT_IMAGE=/path/to/image.png."
     )
 
@@ -204,13 +186,13 @@ def find_airplane_render() -> Path:
 def print_environment() -> None:
     print("=== Kaggle Hunyuan3D airplane smoke test ===", flush=True)
     print(f"Python: {sys.version.split()[0]}", flush=True)
+    print(f"Project dir: {PROJECT_DIR}", flush=True)
     print(f"Workdir: {WORKDIR}", flush=True)
     print(f"Repo dir: {REPO_DIR}", flush=True)
     print(f"Output dir: {OUTPUT_DIR}", flush=True)
     print(f"Local image dir: {LOCAL_IMAGE_DIR}", flush=True)
     print(f"Default ShapeNetCore root: {DEFAULT_CORE_ROOT}", flush=True)
     print(f"Default ShapeNetRendering root: {DEFAULT_RENDERING_ROOT}", flush=True)
-    print(f"ShapeNet instance id: {INSTANCE_ID or '<auto>'}", flush=True)
     print(f"Model: {MODEL_ID} / {SUBFOLDER}", flush=True)
     print(f"Steps: {STEPS}", flush=True)
     print(f"Octree resolution: {OCTREE_RESOLUTION}", flush=True)
