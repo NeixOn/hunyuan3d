@@ -86,6 +86,11 @@ After dependencies are installed once, you can skip that step with:
 The Hunyuan3D-2.1 shape API is imported from `hy3dshape.pipelines`; the older
 `hy3dgen.shapegen` import belongs to a different Hunyuan3D code layout.
 
+The Hunyuan3D-2.1 Hugging Face shape weights currently download as
+`model.fp16.ckpt`, so the script uses `HY3D_USE_SAFETENSORS=0` by default. Only
+set `HY3D_USE_SAFETENSORS=1` if you have a matching `model.fp16.safetensors`
+file in the cache/model folder.
+
 To intentionally try the full official requirements instead:
 
 ```bash

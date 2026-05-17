@@ -44,6 +44,7 @@ SUBFOLDER = os.environ.get("HY3D_SUBFOLDER", "hunyuan3d-dit-v2-1")
 STEPS = int(os.environ.get("HY3D_STEPS", "30"))
 OCTREE_RESOLUTION = int(os.environ.get("HY3D_OCTREE_RESOLUTION", "256"))
 INSTALL_PROFILE = os.environ.get("HY3D_INSTALL_PROFILE", "shape").lower()
+USE_SAFETENSORS = os.environ.get("HY3D_USE_SAFETENSORS", "0") == "1"
 
 DEFAULT_CORE_ROOT = Path("/kaggle/input/datasets/neixon/airplanedataset")
 DEFAULT_RENDERING_ROOT = Path(
@@ -270,6 +271,7 @@ def print_environment() -> None:
     print(f"Default ShapeNetCore root: {DEFAULT_CORE_ROOT}", flush=True)
     print(f"Default ShapeNetRendering root: {DEFAULT_RENDERING_ROOT}", flush=True)
     print(f"Model: {MODEL_ID} / {SUBFOLDER}", flush=True)
+    print(f"Use safetensors: {USE_SAFETENSORS}", flush=True)
     print(f"Steps: {STEPS}", flush=True)
     print(f"Octree resolution: {OCTREE_RESOLUTION}", flush=True)
 
@@ -295,7 +297,7 @@ def generate_shape(input_image: Path) -> Path:
     pipeline = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
         MODEL_ID,
         subfolder=SUBFOLDER,
-        use_safetensors=True,
+        use_safetensors=USE_SAFETENSORS,
     )
 
     image = Image.open(input_image).convert("RGBA")
