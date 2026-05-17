@@ -280,11 +280,13 @@ def print_environment() -> None:
 
 
 def generate_shape(input_image: Path) -> Path:
-    if str(REPO_DIR) not in sys.path:
-        sys.path.insert(0, str(REPO_DIR))
+    shape_dir = REPO_DIR / "hy3dshape"
+    for import_dir in (shape_dir, REPO_DIR):
+        if str(import_dir) not in sys.path:
+            sys.path.insert(0, str(import_dir))
 
     from PIL import Image
-    from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline
+    from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = OUTPUT_DIR / f"{input_image.stem}_hunyuan3d_shape.glb"

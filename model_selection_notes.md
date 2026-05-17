@@ -83,6 +83,9 @@ After dependencies are installed once, you can skip that step with:
 !python kaggle_hunyuan3d_airplane_smoke_test.py
 ```
 
+The Hunyuan3D-2.1 shape API is imported from `hy3dshape.pipelines`; the older
+`hy3dgen.shapegen` import belongs to a different Hunyuan3D code layout.
+
 To intentionally try the full official requirements instead:
 
 ```bash
