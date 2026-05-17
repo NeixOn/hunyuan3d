@@ -204,6 +204,7 @@ def write_runtime_patches() -> None:
     sitecustomize.write_text(
         r'''
 import math
+import os
 
 import torch
 import torch.nn.functional as F
