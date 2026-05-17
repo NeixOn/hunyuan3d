@@ -98,3 +98,63 @@ def find_airplane_render() -> Path:
 
     raise FileNotFoundError(
         "Could not find an airplane render. Set INPUT_IMAGE=/path/to/render.png ")
+
+
+def print_environment() -> None:
+    print("=== Kaggle Hunyuan3D airplane smoke test ===", flush=True)
+    print(f"Python: {sys.version.split()[0]}", flush=True)
+    print(f"Workdir: {WORKDIR}", flush=True)
+    print(f"Repo dir: {REPO_DIR}", flush=True)
+    print(f"Output dir: {OUTPUT_DIR}", flush=True)
+    print(f"Model: {MODEL_ID} / {SUBFOLDER}", flush=True)
+    print(f"Steps: {STEPS}", flush=True)
+    print(f"Octree resolution: {OCTREE_RESOLUTION}", flush=True)
+
+    try:
+        run(["nvidia-smi"])
+    except Exception as exc:
+        print(f"WARNING: nvidia-smi failed: {exc}", flush=True)
+
+
+def generate_shape(input_image: Path) -> Path:
+    if str(REPO_DIR) not in sys.path:
+        sys.path.insert(0, str(REPO_DIR))
+
+    from PIL import Image
+    from hy3dgen.shapegen import Hunyuan3DDiTFlowMatchingPipeline
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = OUTPUT_DIR / f"{input_image.stem}_hunyuan3d_shape.glb"
+
+    print("Loading Hunyuan3D shape pipeline...", flush=True)
+    pipeline = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
+        MODEL_ID,
+        subfolder=SUBFOLDER,
+        use_safetensors=True,
+    )
+
+    image = Image.open(input_image).convert("RGBA")
+    print("Running shape generation. This is the slow/VRAM-heavy part.", flush=True)
+    result = pipeline(
+        image=image,
+        num_inference_steps=STEPS,
+        octree_resolution=OCTREE_RESOLUTION,
+    )
+
+    mesh = result[0] if isinstance(result, (list, tuple)) else result
+    mesh.export(output_path)
+    print(f"Saved mesh: {output_path}", flush=True)
+    return output_path
+
+
+def main() -> None:
+    print_environment()
+    input_image = find_airplane_render()
+    install_repo()
+    output_path = generate_shape(input_image)
+    print("DONE", flush=True)
+    print(f"Output file: {output_path}", flush=True)
+
+
+if __name__ == "__main__":
+    main()
