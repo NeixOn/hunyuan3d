@@ -97,4 +97,4 @@ def find_airplane_render() -> Path:
                 return matches[0]
 
     raise FileNotFoundError(
-        "Could not find an airplane render. Set INPUT_IMAGE=/path/to/render.png "
+        "Could not find an airplane render. Set INPUT_IMAGE=/path/to/render.png ")
