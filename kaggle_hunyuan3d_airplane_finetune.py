@@ -28,6 +28,7 @@ from pathlib import Path
 import yaml
 
 
+SCRIPT_VERSION = "2026-05-17-training-deps-v2"
 PROJECT_DIR = Path(__file__).resolve().parent
 WORKDIR = Path(os.environ.get("WORKDIR", PROJECT_DIR)).resolve()
 REPO_DIR = WORKDIR / "Hunyuan3D-2.1"
@@ -58,6 +59,8 @@ TRAIN_DEEPSPEED = os.environ.get("HY3D_TRAIN_DEEPSPEED", "0") == "1"
 ENABLE_MESH_LOGS = os.environ.get("HY3D_TRAIN_ENABLE_MESH_LOGS", "0") == "1"
 CUDA_VISIBLE_DEVICES = os.environ.get("HY3D_TRAIN_CUDA_VISIBLE_DEVICES", "0")
 INSTALL_TRAIN_DEPS = os.environ.get("HY3D_TRAIN_INSTALL_DEPS", "1") == "1"
+FORCE_MATH_ATTENTION = os.environ.get("HY3D_TRAIN_FORCE_MATH_ATTENTION", "1") == "1"
+PATCH_DIR = OUTPUT_DIR / "runtime_patches"
 
 
 def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
@@ -173,11 +176,87 @@ def patch_config(base_config: Path) -> None:
     print(f"Output dir: {OUTPUT_DIR}", flush=True)
 
 
+def write_runtime_patches() -> None:
+    if not FORCE_MATH_ATTENTION:
+        return
+
+    PATCH_DIR.mkdir(parents=True, exist_ok=True)
+    sitecustomize = PATCH_DIR / "sitecustomize.py"
+    sitecustomize.write_text(
+        r'''
+import math
+
+import torch
+import torch.nn.functional as F
+
+
+try:
+    torch.backends.cuda.enable_flash_sdp(False)
+    torch.backends.cuda.enable_mem_efficient_sdp(False)
+    torch.backends.cuda.enable_math_sdp(True)
+except Exception:
+    pass
+
+
+def _math_scaled_dot_product_attention(
+    query,
+    key,
+    value,
+    attn_mask=None,
+    dropout_p=0.0,
+    is_causal=False,
+    scale=None,
+    enable_gqa=False,
+):
+    if enable_gqa:
+        repeat = query.size(-3) // key.size(-3)
+        key = key.repeat_interleave(repeat, dim=-3)
+        value = value.repeat_interleave(repeat, dim=-3)
+
+    scale_factor = scale if scale is not None else 1.0 / math.sqrt(query.size(-1))
+    scores = torch.matmul(query, key.transpose(-2, -1)) * scale_factor
+
+    if is_causal:
+        causal_mask = torch.ones(
+            scores.size(-2),
+            scores.size(-1),
+            dtype=torch.bool,
+            device=scores.device,
+        ).tril()
+        scores = scores.masked_fill(~causal_mask, float("-inf"))
+
+    if attn_mask is not None:
+        if attn_mask.dtype == torch.bool:
+            scores = scores.masked_fill(~attn_mask, float("-inf"))
+        else:
+            scores = scores + attn_mask
+
+    weights = torch.softmax(scores, dim=-1)
+    if dropout_p:
+        weights = torch.dropout(weights, dropout_p, train=True)
+    return torch.matmul(weights, value)
+
+
+F.scaled_dot_product_attention = _math_scaled_dot_product_attention
+print("Using math fallback for torch.nn.functional.scaled_dot_product_attention", flush=True)
+'''.lstrip(),
+        encoding="utf-8",
+    )
+    print(f"Runtime patch dir: {PATCH_DIR}", flush=True)
+
+
 def launch_training() -> None:
     env = os.environ.copy()
     env["CUDA_VISIBLE_DEVICES"] = CUDA_VISIBLE_DEVICES
     env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     env.setdefault("TOKENIZERS_PARALLELISM", "false")
+    if FORCE_MATH_ATTENTION:
+        existing_pythonpath = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = (
+            str(PATCH_DIR)
+            if not existing_pythonpath
+            else str(PATCH_DIR) + os.pathsep + existing_pythonpath
+        )
 
     cmd = [
         sys.executable,
@@ -200,6 +279,7 @@ def launch_training() -> None:
 
 def print_environment() -> None:
     print("=== Kaggle Hunyuan3D shape fine-tune launcher ===", flush=True)
+    print(f"Script version: {SCRIPT_VERSION}", flush=True)
     print(f"Python: {sys.version.split()[0]}", flush=True)
     print(f"Project dir: {PROJECT_DIR}", flush=True)
     print(f"Workdir: {WORKDIR}", flush=True)
@@ -213,6 +293,7 @@ def print_environment() -> None:
     print(f"DeepSpeed: {TRAIN_DEEPSPEED}", flush=True)
     print(f"Mesh logs: {ENABLE_MESH_LOGS}", flush=True)
     print(f"Install training deps: {INSTALL_TRAIN_DEPS}", flush=True)
+    print(f"Force math attention: {FORCE_MATH_ATTENTION}", flush=True)
     try:
         run(["nvidia-smi"])
     except Exception as exc:
@@ -227,6 +308,7 @@ def main() -> None:
     validate_dataset(VAL_DATA_LIST, "Validation")
     base_config = find_base_config()
     patch_config(base_config)
+    write_runtime_patches()
     launch_training()
     print("Fine-tuning run finished.", flush=True)
 
