@@ -18,6 +18,7 @@ Default Kaggle paths used by this script:
 
 Optional env overrides:
     INPUT_IMAGE=/path/to/image.png
+    HY3D_INSTALL_PROFILE=shape|full
     SHAPENET_CORE_ROOT=/path/to/ShapeNetCore/02691156-or-parent
     SHAPENET_RENDERING_ROOT=/path/to/ShapeNetRendering/02691156-or-parent
 """
@@ -42,6 +43,7 @@ MODEL_ID = os.environ.get("HY3D_MODEL_ID", "tencent/Hunyuan3D-2.1")
 SUBFOLDER = os.environ.get("HY3D_SUBFOLDER", "hunyuan3d-dit-v2-1")
 STEPS = int(os.environ.get("HY3D_STEPS", "30"))
 OCTREE_RESOLUTION = int(os.environ.get("HY3D_OCTREE_RESOLUTION", "256"))
+INSTALL_PROFILE = os.environ.get("HY3D_INSTALL_PROFILE", "shape").lower()
 
 DEFAULT_CORE_ROOT = Path("/kaggle/input/datasets/neixon/airplanedataset")
 DEFAULT_RENDERING_ROOT = Path(
@@ -54,6 +56,15 @@ def run(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.run(cmd, cwd=str(cwd) if cwd else None, check=True)
 
 
+def requirement_name(line: str) -> str:
+    token = line.strip()
+    for marker in ("==", ">=", "<=", "~=", "!=", ">", "<"):
+        if marker in token:
+            token = token.split(marker, 1)[0]
+            break
+    return token.strip().lower().replace("_", "-")
+
+
 def build_kaggle_requirements() -> Path:
     source = REPO_DIR / "requirements.txt"
     if os.environ.get("HY3D_REQUIREMENTS_FILE"):
@@ -62,12 +73,38 @@ def build_kaggle_requirements() -> Path:
     py312_replacements = {
         "numpy==1.24.4": "numpy==1.26.4",
         "pymeshlab==2022.2.post3": "pymeshlab==2023.12.post3",
+        "open3d==0.18.0": "open3d==0.19.0",
+        "onnxruntime==1.16.3": "onnxruntime==1.18.0",
+    }
+    shape_excluded_packages = {
+        # Texture upscaling / paint pipeline.
+        "realesrgan",
+        "basicsr",
+        "tb-nightly",
+        "cupy-cuda12x",
+        # Demo server.
+        "gradio",
+        "fastapi",
+        "uvicorn",
+        # Blender / ONNX / training helpers not needed for shape-only inference.
+        "bpy",
+        "onnxruntime",
+        "deepspeed",
+        "pythreejs",
     }
     lines = source.read_text(encoding="utf-8").splitlines()
     patched = []
     replacements_used = []
+    skipped_for_shape = []
     for line in lines:
         stripped = line.strip()
+        if INSTALL_PROFILE == "shape" and stripped and not stripped.startswith(("#", "--")):
+            name = requirement_name(stripped)
+            if name in shape_excluded_packages:
+                patched.append(f"# skipped for shape-only smoke test: {line}")
+                skipped_for_shape.append(stripped)
+                continue
+
         replacement = py312_replacements.get(stripped)
         if sys.version_info >= (3, 12) and replacement:
             patched.append(replacement)
@@ -77,8 +114,13 @@ def build_kaggle_requirements() -> Path:
 
     PATCHED_REQUIREMENTS.write_text("\n".join(patched) + "\n", encoding="utf-8")
     print(f"Using Kaggle requirements file: {PATCHED_REQUIREMENTS}", flush=True)
+    print(f"Dependency install profile: {INSTALL_PROFILE}", flush=True)
     for old, new in replacements_used:
         print(f"Patched {old} to {new} for Python 3.12.", flush=True)
+    if skipped_for_shape:
+        print("Skipped packages for shape-only smoke test:", flush=True)
+        for package in skipped_for_shape:
+            print(f"  - {package}", flush=True)
     return PATCHED_REQUIREMENTS
 
 

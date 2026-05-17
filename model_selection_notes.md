@@ -55,11 +55,23 @@ Kaggle:
 ```
 
 On Kaggle Python 3.12, the script writes `hy3d_requirements_kaggle.txt` and
-patches old Hunyuan3D pins that do not have Python 3.12 wheels:
+uses `HY3D_INSTALL_PROFILE=shape` by default. This installs only the dependencies
+needed for shape-only reconstruction and skips texture/demo/training packages
+that are not needed for the smoke test:
+
+```text
+realesrgan, basicsr, tb_nightly, cupy-cuda12x, gradio, fastapi, uvicorn,
+bpy, onnxruntime, deepspeed, pythreejs
+```
+
+For Python 3.12 compatibility, it also patches old Hunyuan3D pins that do not
+have suitable wheels:
 
 ```text
 numpy==1.24.4 -> numpy==1.26.4
 pymeshlab==2022.2.post3 -> pymeshlab==2023.12.post3
+open3d==0.18.0 -> open3d==0.19.0
+onnxruntime==1.16.3 -> onnxruntime==1.18.0
 ```
 
 If installation failed before this patch, just pull/update this repo and run the
@@ -68,6 +80,13 @@ After dependencies are installed once, you can skip that step with:
 
 ```bash
 %env HY3D_SKIP_DEP_INSTALL=1
+!python kaggle_hunyuan3d_airplane_smoke_test.py
+```
+
+To intentionally try the full official requirements instead:
+
+```bash
+%env HY3D_INSTALL_PROFILE=full
 !python kaggle_hunyuan3d_airplane_smoke_test.py
 ```
 
