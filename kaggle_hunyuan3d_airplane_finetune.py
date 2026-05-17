@@ -55,6 +55,7 @@ TRAIN_NUM_WORKERS = int(os.environ.get("HY3D_TRAIN_NUM_WORKERS", "2"))
 TRAIN_VAL_NUM_WORKERS = int(os.environ.get("HY3D_TRAIN_VAL_NUM_WORKERS", "1"))
 TRAIN_LR = float(os.environ.get("HY3D_TRAIN_LR", "1e-5"))
 TRAIN_AMP_TYPE = os.environ.get("HY3D_TRAIN_AMP_TYPE", "16")
+TRAIN_PC_SIZE = int(os.environ.get("HY3D_TRAIN_PC_SIZE", "8192"))
 TRAIN_DEEPSPEED = os.environ.get("HY3D_TRAIN_DEEPSPEED", "0") == "1"
 ENABLE_MESH_LOGS = os.environ.get("HY3D_TRAIN_ENABLE_MESH_LOGS", "0") == "1"
 CUDA_VISIBLE_DEVICES = os.environ.get("HY3D_TRAIN_CUDA_VISIBLE_DEVICES", "0")
@@ -153,7 +154,7 @@ def patch_config(base_config: Path) -> None:
     training["base_lr"] = TRAIN_LR
     training["every_n_train_steps"] = max(1, TRAIN_STEPS)
     training["val_check_interval"] = max(1, min(TRAIN_STEPS, int(os.environ.get("HY3D_TRAIN_VAL_INTERVAL", "10"))))
-    training["limit_val_batches"] = int(os.environ.get("HY3D_TRAIN_LIMIT_VAL_BATCHES", "1"))
+    training["limit_val_batches"] = int(os.environ.get("HY3D_TRAIN_LIMIT_VAL_BATCHES", "0"))
     training["log_every_n_steps"] = int(os.environ.get("HY3D_TRAIN_LOG_EVERY_N_STEPS", "1"))
     training["num_nodes"] = 1
     training["ckpt_path"] = os.environ.get("HY3D_TRAIN_RESUME_CKPT", "")
@@ -164,6 +165,15 @@ def patch_config(base_config: Path) -> None:
     dataset_params["batch_size"] = TRAIN_BATCH_SIZE
     dataset_params["num_workers"] = TRAIN_NUM_WORKERS
     dataset_params["val_num_workers"] = TRAIN_VAL_NUM_WORKERS
+    dataset_params["pc_size"] = TRAIN_PC_SIZE
+
+    first_stage_params = (
+        cfg.setdefault("model", {})
+        .setdefault("params", {})
+        .setdefault("first_stage_config", {})
+        .setdefault("params", {})
+    )
+    first_stage_params["pc_size"] = TRAIN_PC_SIZE
 
     if not ENABLE_MESH_LOGS:
         cfg.pop("callbacks", None)
@@ -289,6 +299,7 @@ def print_environment() -> None:
     print(f"Steps: {TRAIN_STEPS}", flush=True)
     print(f"GPUs: {TRAIN_GPUS} (CUDA_VISIBLE_DEVICES={CUDA_VISIBLE_DEVICES})", flush=True)
     print(f"Batch size: {TRAIN_BATCH_SIZE}", flush=True)
+    print(f"Point cloud size: {TRAIN_PC_SIZE}", flush=True)
     print(f"AMP type: {TRAIN_AMP_TYPE}", flush=True)
     print(f"DeepSpeed: {TRAIN_DEEPSPEED}", flush=True)
     print(f"Mesh logs: {ENABLE_MESH_LOGS}", flush=True)
