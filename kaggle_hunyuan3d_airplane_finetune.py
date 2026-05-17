@@ -28,7 +28,7 @@ from pathlib import Path
 import yaml
 
 
-SCRIPT_VERSION = "2026-05-17-training-deps-v2"
+SCRIPT_VERSION = "2026-05-17-t4-gradient-checkpoint-v3"
 PROJECT_DIR = Path(__file__).resolve().parent
 WORKDIR = Path(os.environ.get("WORKDIR", PROJECT_DIR)).resolve()
 REPO_DIR = WORKDIR / "Hunyuan3D-2.1"
@@ -62,6 +62,7 @@ ENABLE_MESH_LOGS = os.environ.get("HY3D_TRAIN_ENABLE_MESH_LOGS", "0") == "1"
 CUDA_VISIBLE_DEVICES = os.environ.get("HY3D_TRAIN_CUDA_VISIBLE_DEVICES", "0")
 INSTALL_TRAIN_DEPS = os.environ.get("HY3D_TRAIN_INSTALL_DEPS", "1") == "1"
 FORCE_MATH_ATTENTION = os.environ.get("HY3D_TRAIN_FORCE_MATH_ATTENTION", "1") == "1"
+GRADIENT_CHECKPOINTING = os.environ.get("HY3D_TRAIN_GRADIENT_CHECKPOINTING", "1") == "1"
 PATCH_DIR = OUTPUT_DIR / "runtime_patches"
 
 
@@ -208,6 +209,7 @@ import os
 
 import torch
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 
 try:
@@ -275,6 +277,73 @@ print(
     f"(chunk_size={os.environ.get('HY3D_TRAIN_ATTENTION_CHUNK_SIZE', '128')})",
     flush=True,
 )
+
+
+def _patch_hunyuan_dit_gradient_checkpointing():
+    if os.environ.get("HY3D_TRAIN_GRADIENT_CHECKPOINTING", "1") != "1":
+        return
+
+    try:
+        from hy3dshape.models.denoisers.hunyuandit import HunYuanDiTPlain
+    except Exception as exc:
+        print(f"Could not patch HunYuanDiTPlain gradient checkpointing: {exc}", flush=True)
+        return
+
+    if getattr(HunYuanDiTPlain, "_hy3d_checkpoint_patch", False):
+        return
+
+    def checkpointed_forward(self, x, t, contexts, **kwargs):
+        cond = contexts["main"]
+        t = self.t_embedder(t, condition=kwargs.get("guidance_cond"))
+        x = self.x_embedder(x)
+
+        if self.use_pos_emb:
+            pos_embed = self.pos_embed.to(x.dtype)
+            x = x + pos_embed
+
+        if self.use_attention_pooling:
+            extra_vec = self.pooler(cond, None)
+            c = t + self.extra_embedder(extra_vec)
+        else:
+            c = t
+
+        if self.with_decoupled_ca:
+            additional_cond = self.additional_cond_proj(contexts["additional"])
+            cond = torch.cat([cond, additional_cond], dim=1)
+
+        x = torch.cat([c, x], dim=1)
+        skip_value_list = []
+
+        for layer, block in enumerate(self.blocks):
+            skip_value = None if layer <= self.depth // 2 else skip_value_list.pop()
+
+            if self.training and torch.is_grad_enabled():
+                def run_block(x_, c_, cond_, skip_, block_=block):
+                    return block_(x_, c_, cond_, skip_value=skip_)
+
+                x = checkpoint(
+                    run_block,
+                    x,
+                    c,
+                    cond,
+                    skip_value,
+                    use_reentrant=False,
+                )
+            else:
+                x = block(x, c, cond, skip_value=skip_value)
+
+            if layer < self.depth // 2:
+                skip_value_list.append(x)
+
+        x = self.final_layer(x)
+        return x
+
+    HunYuanDiTPlain.forward = checkpointed_forward
+    HunYuanDiTPlain._hy3d_checkpoint_patch = True
+    print("Using gradient checkpointing for HunYuanDiTPlain blocks", flush=True)
+
+
+_patch_hunyuan_dit_gradient_checkpointing()
 '''.lstrip(),
         encoding="utf-8",
     )
@@ -289,6 +358,7 @@ def launch_training() -> None:
     if FORCE_MATH_ATTENTION:
         existing_pythonpath = env.get("PYTHONPATH", "")
         env["HY3D_TRAIN_ATTENTION_CHUNK_SIZE"] = str(ATTENTION_CHUNK_SIZE)
+        env["HY3D_TRAIN_GRADIENT_CHECKPOINTING"] = "1" if GRADIENT_CHECKPOINTING else "0"
         env["PYTHONPATH"] = (
             str(PATCH_DIR)
             if not existing_pythonpath
@@ -333,6 +403,7 @@ def print_environment() -> None:
     print(f"Install training deps: {INSTALL_TRAIN_DEPS}", flush=True)
     print(f"Force math attention: {FORCE_MATH_ATTENTION}", flush=True)
     print(f"Attention chunk size: {ATTENTION_CHUNK_SIZE}", flush=True)
+    print(f"Gradient checkpointing: {GRADIENT_CHECKPOINTING}", flush=True)
     try:
         run(["nvidia-smi"])
     except Exception as exc:
