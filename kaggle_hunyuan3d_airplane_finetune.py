@@ -55,7 +55,8 @@ TRAIN_NUM_WORKERS = int(os.environ.get("HY3D_TRAIN_NUM_WORKERS", "2"))
 TRAIN_VAL_NUM_WORKERS = int(os.environ.get("HY3D_TRAIN_VAL_NUM_WORKERS", "1"))
 TRAIN_LR = float(os.environ.get("HY3D_TRAIN_LR", "1e-5"))
 TRAIN_AMP_TYPE = os.environ.get("HY3D_TRAIN_AMP_TYPE", "16")
-TRAIN_PC_SIZE = int(os.environ.get("HY3D_TRAIN_PC_SIZE", "8192"))
+TRAIN_PC_SIZE = int(os.environ.get("HY3D_TRAIN_PC_SIZE", "81920"))
+ATTENTION_CHUNK_SIZE = int(os.environ.get("HY3D_TRAIN_ATTENTION_CHUNK_SIZE", "128"))
 TRAIN_DEEPSPEED = os.environ.get("HY3D_TRAIN_DEEPSPEED", "0") == "1"
 ENABLE_MESH_LOGS = os.environ.get("HY3D_TRAIN_ENABLE_MESH_LOGS", "0") == "1"
 CUDA_VISIBLE_DEVICES = os.environ.get("HY3D_TRAIN_CUDA_VISIBLE_DEVICES", "0")
@@ -143,6 +144,14 @@ def validate_dataset(path: Path, label: str) -> None:
 
 
 def patch_config(base_config: Path) -> None:
+    if TRAIN_PC_SIZE != 81920:
+        print(
+            "Warning: Hunyuan3D VAE weights expect pc_size=81920. "
+            f"Current HY3D_TRAIN_PC_SIZE={TRAIN_PC_SIZE} may fail unless the VAE "
+            "checkpoint/config was trained for that point count.",
+            flush=True,
+        )
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     with base_config.open("r", encoding="utf-8") as file:
         cfg = yaml.safe_load(file)
@@ -224,31 +233,47 @@ def _math_scaled_dot_product_attention(
         value = value.repeat_interleave(repeat, dim=-3)
 
     scale_factor = scale if scale is not None else 1.0 / math.sqrt(query.size(-1))
-    scores = torch.matmul(query, key.transpose(-2, -1)) * scale_factor
+    chunk_size = int(os.environ.get("HY3D_TRAIN_ATTENTION_CHUNK_SIZE", "128"))
+    outputs = []
+    query_len = query.size(-2)
 
-    if is_causal:
-        causal_mask = torch.ones(
-            scores.size(-2),
-            scores.size(-1),
-            dtype=torch.bool,
-            device=scores.device,
-        ).tril()
-        scores = scores.masked_fill(~causal_mask, float("-inf"))
+    for start in range(0, query_len, chunk_size):
+        end = min(start + chunk_size, query_len)
+        query_chunk = query[..., start:end, :]
+        scores = torch.matmul(query_chunk, key.transpose(-2, -1)) * scale_factor
 
-    if attn_mask is not None:
-        if attn_mask.dtype == torch.bool:
-            scores = scores.masked_fill(~attn_mask, float("-inf"))
-        else:
-            scores = scores + attn_mask
+        if is_causal:
+            causal_mask = torch.ones(
+                end - start,
+                scores.size(-1),
+                dtype=torch.bool,
+                device=scores.device,
+            ).tril(diagonal=start)
+            scores = scores.masked_fill(~causal_mask, float("-inf"))
 
-    weights = torch.softmax(scores, dim=-1)
-    if dropout_p:
-        weights = torch.dropout(weights, dropout_p, train=True)
-    return torch.matmul(weights, value)
+        if attn_mask is not None:
+            mask_chunk = attn_mask
+            if attn_mask.dim() >= 2 and attn_mask.size(-2) == query_len:
+                mask_chunk = attn_mask[..., start:end, :]
+            if mask_chunk.dtype == torch.bool:
+                scores = scores.masked_fill(~mask_chunk, float("-inf"))
+            else:
+                scores = scores + mask_chunk
+
+        weights = torch.softmax(scores, dim=-1)
+        if dropout_p:
+            weights = torch.dropout(weights, dropout_p, train=True)
+        outputs.append(torch.matmul(weights, value))
+
+    return torch.cat(outputs, dim=-2)
 
 
 F.scaled_dot_product_attention = _math_scaled_dot_product_attention
-print("Using math fallback for torch.nn.functional.scaled_dot_product_attention", flush=True)
+print(
+    "Using chunked math fallback for torch.nn.functional.scaled_dot_product_attention "
+    f"(chunk_size={os.environ.get('HY3D_TRAIN_ATTENTION_CHUNK_SIZE', '128')})",
+    flush=True,
+)
 '''.lstrip(),
         encoding="utf-8",
     )
@@ -262,6 +287,7 @@ def launch_training() -> None:
     env.setdefault("TOKENIZERS_PARALLELISM", "false")
     if FORCE_MATH_ATTENTION:
         existing_pythonpath = env.get("PYTHONPATH", "")
+        env["HY3D_TRAIN_ATTENTION_CHUNK_SIZE"] = str(ATTENTION_CHUNK_SIZE)
         env["PYTHONPATH"] = (
             str(PATCH_DIR)
             if not existing_pythonpath
@@ -305,6 +331,7 @@ def print_environment() -> None:
     print(f"Mesh logs: {ENABLE_MESH_LOGS}", flush=True)
     print(f"Install training deps: {INSTALL_TRAIN_DEPS}", flush=True)
     print(f"Force math attention: {FORCE_MATH_ATTENTION}", flush=True)
+    print(f"Attention chunk size: {ATTENTION_CHUNK_SIZE}", flush=True)
     try:
         run(["nvidia-smi"])
     except Exception as exc:
