@@ -6,6 +6,7 @@
 #   bash server_install_hunyuan3d_deps.sh
 #
 # Then run the existing generator without reinstalling deps:
+#   source .venv/bin/activate
 #   export HY3D_SKIP_DEP_INSTALL=1
 #   export HY3D_USE_SAFETENSORS=0
 #   python3 kaggle_hunyuan3d_airplane_smoke_test.py
@@ -15,7 +16,10 @@ set -Eeuo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${HY3D_REPO_DIR:-${PROJECT_DIR}/Hunyuan3D-2.1}"
 REPO_URL="${HY3D_REPO_URL:-https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1.git}"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+SYSTEM_PYTHON_BIN="${PYTHON_BIN:-python3}"
+PYTHON_BIN="${SYSTEM_PYTHON_BIN}"
+USE_VENV="${HY3D_USE_VENV:-1}"
+VENV_DIR="${HY3D_VENV_DIR:-${PROJECT_DIR}/.venv}"
 REQUIREMENTS_OUT="${HY3D_SERVER_REQUIREMENTS:-${PROJECT_DIR}/hy3d_requirements_server_shape.txt}"
 
 INSTALL_TORCH="${HY3D_INSTALL_TORCH:-1}"
@@ -27,6 +31,13 @@ export PIP_NO_INPUT=1
 export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-120}"
 export PIP_RETRIES="${PIP_RETRIES:-5}"
 export PIP_BREAK_SYSTEM_PACKAGES=1
+PIP_COMMON_ARGS=(
+  --no-cache-dir
+  --ignore-installed
+  --break-system-packages
+  --retries "${PIP_RETRIES}"
+  --default-timeout "${PIP_DEFAULT_TIMEOUT}"
+)
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%H:%M:%S')" "$*"
@@ -41,7 +52,7 @@ run() {
 
 log "Project dir: ${PROJECT_DIR}"
 log "Repo dir: ${REPO_DIR}"
-log "Python: $(${PYTHON_BIN} --version 2>&1)"
+log "System Python: $(${SYSTEM_PYTHON_BIN} --version 2>&1)"
 
 if command -v nvidia-smi >/dev/null 2>&1; then
   run nvidia-smi
@@ -67,8 +78,31 @@ else
   log "Skipping apt package installation."
 fi
 
-log "Installing Python packaging helpers"
-run "${PYTHON_BIN}" -m pip install --upgrade --no-cache-dir setuptools wheel packaging
+if [[ "${USE_VENV}" == "1" ]]; then
+  log "Creating/updating virtual environment: ${VENV_DIR}"
+  run "${SYSTEM_PYTHON_BIN}" -m venv "${VENV_DIR}"
+  PYTHON_BIN="${VENV_DIR}/bin/python"
+  log "Venv Python: $(${PYTHON_BIN} --version 2>&1)"
+  log "Upgrading pip tooling inside venv"
+  run "${PYTHON_BIN}" -m pip install --upgrade --no-cache-dir pip setuptools wheel packaging
+  PIP_COMMON_ARGS=(
+    --no-cache-dir
+    --ignore-installed
+    --retries "${PIP_RETRIES}"
+    --default-timeout "${PIP_DEFAULT_TIMEOUT}"
+  )
+else
+  log "Using system Python because HY3D_USE_VENV=${USE_VENV}"
+fi
+
+log "Checking Python packaging helpers"
+run "${PYTHON_BIN}" - <<'PY'
+import importlib.util
+
+for name in ("setuptools", "wheel", "packaging"):
+    status = "OK" if importlib.util.find_spec(name) else "MISSING"
+    print(f"{name}: {status}")
+PY
 
 if [[ ! -d "${REPO_DIR}/.git" ]]; then
   log "Cloning Hunyuan3D repository"
@@ -79,7 +113,7 @@ fi
 
 if [[ "${INSTALL_TORCH}" == "1" ]]; then
   log "Installing PyTorch wheels from ${TORCH_INDEX_URL}"
-  run "${PYTHON_BIN}" -m pip install --upgrade --no-cache-dir \
+  run "${PYTHON_BIN}" -m pip install "${PIP_COMMON_ARGS[@]}" \
     --index-url "${TORCH_INDEX_URL}" \
     torch torchvision torchaudio
 else
@@ -171,9 +205,7 @@ print(target)
 PY
 
 log "Installing Hunyuan3D shape dependencies"
-run "${PYTHON_BIN}" -m pip install --upgrade --no-cache-dir \
-  --retries "${PIP_RETRIES}" \
-  --default-timeout "${PIP_DEFAULT_TIMEOUT}" \
+run "${PYTHON_BIN}" -m pip install "${PIP_COMMON_ARGS[@]}" \
   -r "${REQUIREMENTS_OUT}"
 
 export PYTHONPATH="${REPO_DIR}/hy3dshape:${REPO_DIR}:${PYTHONPATH:-}"
@@ -214,6 +246,7 @@ log "DONE"
 cat <<EOF
 
 Next run:
+  source .venv/bin/activate
   export HY3D_SKIP_DEP_INSTALL=1
   export HY3D_USE_SAFETENSORS=0
   export HY3D_STEPS=30
