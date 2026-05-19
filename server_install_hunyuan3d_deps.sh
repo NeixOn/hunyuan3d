@@ -87,7 +87,6 @@ if [[ "${USE_VENV}" == "1" ]]; then
   run "${PYTHON_BIN}" -m pip install --upgrade --no-cache-dir pip setuptools wheel packaging
   PIP_COMMON_ARGS=(
     --no-cache-dir
-    --ignore-installed
     --retries "${PIP_RETRIES}"
     --default-timeout "${PIP_DEFAULT_TIMEOUT}"
   )
@@ -193,16 +192,27 @@ for line in source.read_text(encoding="utf-8").splitlines():
 
 extra = [
     "",
+    "# Keep compiled scientific wheels ABI-compatible on Python 3.12.",
+    "numpy==1.26.4",
+    "scipy==1.14.1",
+    "scikit-learn==1.6.1",
     "# Extra utilities used by our quality/post-processing scripts.",
     "trimesh==4.4.7",
     "pymeshlab==2023.12.post3",
-    "scipy==1.14.1",
 ]
 
 text = "\n".join(patched + extra).rstrip() + "\n"
 target.write_text(text, encoding="utf-8")
 print(target)
 PY
+
+log "Installing compatible NumPy/SciPy stack first"
+run "${PYTHON_BIN}" -m pip install --force-reinstall --no-cache-dir \
+  --retries "${PIP_RETRIES}" \
+  --default-timeout "${PIP_DEFAULT_TIMEOUT}" \
+  numpy==1.26.4 \
+  scipy==1.14.1 \
+  scikit-learn==1.6.1
 
 log "Installing Hunyuan3D shape dependencies"
 run "${PYTHON_BIN}" -m pip install "${PIP_COMMON_ARGS[@]}" \
