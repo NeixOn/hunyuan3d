@@ -34,7 +34,32 @@ pip install -r server/requirements_server_api.txt
 
 ## Start
 
-Terminal 1, API:
+Recommended background start:
+
+```bash
+cd /root/hunyuan3d
+source .venv/bin/activate
+pip install -r server/requirements_server_api.txt
+
+export HY3D_SERVER_API_KEY=change-me
+bash server/start_services.sh
+```
+
+Check services:
+
+```bash
+bash server/status_services.sh
+tail -f server_logs/api.log
+tail -f server_logs/worker.log
+```
+
+Stop services:
+
+```bash
+bash server/stop_services.sh
+```
+
+Manual start, terminal 1, API:
 
 ```bash
 cd /root/hunyuan3d
@@ -63,8 +88,10 @@ python -m server.worker
 
 ## Test From Another Machine
 
+Use the public server IP, not `127.0.0.1`.
+
 ```bash
-curl -X POST http://SERVER_IP:8000/jobs \
+curl -X POST http://SERVER_PUBLIC_IP:8000/jobs \
   -H "X-API-Key: change-me" \
   -F "image=@image/airplan.png"
 ```
@@ -72,16 +99,19 @@ curl -X POST http://SERVER_IP:8000/jobs \
 Then poll:
 
 ```bash
-curl -H "X-API-Key: change-me" http://SERVER_IP:8000/jobs/JOB_ID
+curl -H "X-API-Key: change-me" http://SERVER_PUBLIC_IP:8000/jobs/JOB_ID
 ```
 
 Download:
 
 ```bash
 curl -L -H "X-API-Key: change-me" \
-  http://SERVER_IP:8000/jobs/JOB_ID/result \
+  http://SERVER_PUBLIC_IP:8000/jobs/JOB_ID/result \
   -o result.glb
 ```
+
+More examples, including Windows PowerShell and SSH tunnel usage, are in
+`server/remote_request_examples.md`.
 
 ## Status Values
 

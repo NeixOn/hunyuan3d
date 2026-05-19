@@ -23,7 +23,10 @@ VENV_DIR="${HY3D_VENV_DIR:-${PROJECT_DIR}/.venv}"
 REQUIREMENTS_OUT="${HY3D_SERVER_REQUIREMENTS:-${PROJECT_DIR}/hy3d_requirements_server_shape.txt}"
 
 INSTALL_TORCH="${HY3D_INSTALL_TORCH:-1}"
-TORCH_INDEX_URL="${HY3D_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
+TORCH_INDEX_URL="${HY3D_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}"
+TORCH_VERSION="${HY3D_TORCH_VERSION:-2.4.1}"
+TORCHVISION_VERSION="${HY3D_TORCHVISION_VERSION:-0.19.1}"
+TORCHAUDIO_VERSION="${HY3D_TORCHAUDIO_VERSION:-2.4.1}"
 SKIP_APT="${HY3D_SKIP_APT:-0}"
 
 export PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -112,9 +115,12 @@ fi
 
 if [[ "${INSTALL_TORCH}" == "1" ]]; then
   log "Installing PyTorch wheels from ${TORCH_INDEX_URL}"
+  run "${PYTHON_BIN}" -m pip uninstall -y torch torchvision torchaudio
   run "${PYTHON_BIN}" -m pip install "${PIP_COMMON_ARGS[@]}" \
     --index-url "${TORCH_INDEX_URL}" \
-    torch torchvision torchaudio
+    "torch==${TORCH_VERSION}" \
+    "torchvision==${TORCHVISION_VERSION}" \
+    "torchaudio==${TORCHAUDIO_VERSION}"
 else
   log "Skipping PyTorch install because HY3D_INSTALL_TORCH=${INSTALL_TORCH}"
 fi
@@ -264,6 +270,10 @@ Next run:
   ${PYTHON_BIN} kaggle_hunyuan3d_airplane_smoke_test.py
 
 If PyTorch CUDA import fails on this server, rerun with another wheel index, for example:
-  HY3D_TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124 bash server_install_hunyuan3d_deps.sh
+  HY3D_TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124 \\
+  HY3D_TORCH_VERSION=2.5.1 \\
+  HY3D_TORCHVISION_VERSION=0.20.1 \\
+  HY3D_TORCHAUDIO_VERSION=2.5.1 \\
+  bash server_install_hunyuan3d_deps.sh
 
 EOF
