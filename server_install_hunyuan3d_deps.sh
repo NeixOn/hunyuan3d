@@ -67,8 +67,8 @@ else
   log "Skipping apt package installation."
 fi
 
-log "Upgrading pip tooling"
-run "${PYTHON_BIN}" -m pip install --upgrade --no-cache-dir pip setuptools wheel packaging
+log "Installing Python packaging helpers"
+run "${PYTHON_BIN}" -m pip install --upgrade --no-cache-dir setuptools wheel packaging
 
 if [[ ! -d "${REPO_DIR}/.git" ]]; then
   log "Cloning Hunyuan3D repository"
