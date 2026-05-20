@@ -32,6 +32,20 @@ source .venv/bin/activate
 pip install -r server/requirements_server_api.txt
 ```
 
+## One-Command Server Bootstrap
+
+On a fresh server:
+
+```bash
+cd /root
+git clone https://github.com/NeixOn/hunyuan3d.git
+cd hunyuan3d
+bash bootstrap_cloudcompute_server.sh
+```
+
+This clones/updates the project, installs Hunyuan3D dependencies, installs API
+dependencies, and starts API + worker in the background.
+
 ## Start
 
 Recommended background start:
