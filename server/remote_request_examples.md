@@ -5,7 +5,7 @@ Use the public server IP, not `127.0.0.1`, from your local computer.
 Set variables locally:
 
 ```bash
-SERVER_URL=http://SERVER_PUBLIC_IP:8000
+SERVER_URL=http://SERVER_PUBLIC_IP:56849
 API_KEY=change-me
 IMAGE_PATH=./airplan.png
 ```
@@ -45,7 +45,7 @@ curl -L -H "X-API-Key: $API_KEY" \
 ## Windows PowerShell
 
 ```powershell
-$ServerUrl = "http://SERVER_PUBLIC_IP:8000"
+$ServerUrl = "http://SERVER_PUBLIC_IP:56849"
 $ApiKey = "change-me"
 $ImagePath = "C:\path\to\airplan.png"
 
@@ -69,14 +69,14 @@ curl.exe -L -H "X-API-Key: $ApiKey" `
 Check that API listens on all interfaces:
 
 ```bash
-curl http://127.0.0.1:8000/health
-ss -ltnp | grep 8000
+curl http://127.0.0.1:1111/health
+ss -ltnp | grep 1111
 ```
 
-Open the firewall/security group for TCP port `8000`, or use an SSH tunnel:
+Open or map the server's internal TCP port `1111`, or use an SSH tunnel:
 
 ```bash
-ssh -L 8000:127.0.0.1:8000 root@SERVER_PUBLIC_IP
+ssh -L 8000:127.0.0.1:1111 root@SERVER_PUBLIC_IP
 ```
 
 Then send requests locally to:

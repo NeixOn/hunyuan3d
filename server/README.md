@@ -68,7 +68,7 @@ source .venv/bin/activate
 export HY3D_SERVER_API_KEY=change-me
 export HY3D_SERVER_DATA_DIR=/root/hunyuan3d/server_data
 
-uvicorn server.app:app --host 0.0.0.0 --port 8000
+uvicorn server.app:app --host 0.0.0.0 --port 1111
 ```
 
 Terminal 2, GPU worker:
@@ -91,7 +91,7 @@ python -m server.worker
 Use the public server IP, not `127.0.0.1`.
 
 ```bash
-curl -X POST http://SERVER_PUBLIC_IP:8000/jobs \
+curl -X POST http://SERVER_PUBLIC_IP:56849/jobs \
   -H "X-API-Key: change-me" \
   -F "image=@image/airplan.png"
 ```
@@ -99,14 +99,14 @@ curl -X POST http://SERVER_PUBLIC_IP:8000/jobs \
 Then poll:
 
 ```bash
-curl -H "X-API-Key: change-me" http://SERVER_PUBLIC_IP:8000/jobs/JOB_ID
+curl -H "X-API-Key: change-me" http://SERVER_PUBLIC_IP:56849/jobs/JOB_ID
 ```
 
 Download:
 
 ```bash
 curl -L -H "X-API-Key: change-me" \
-  http://SERVER_PUBLIC_IP:8000/jobs/JOB_ID/result \
+  http://SERVER_PUBLIC_IP:56849/jobs/JOB_ID/result \
   -o result.glb
 ```
 
